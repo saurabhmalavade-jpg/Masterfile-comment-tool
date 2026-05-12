@@ -492,7 +492,13 @@ def build_report(sku_comments, uid_col_name, file_name):
             row_idx += 1
 
     ws_rpt.freeze_panes = "A3"
-    ws_rpt.auto_filter.ref = f"A2:F{row_idx - 1}"
+
+    # Remove 'Other Comments' column if no other-type comments exist
+    if other_count == 0:
+        ws_rpt.delete_cols(6)
+        ws_rpt.auto_filter.ref = f"A2:E{row_idx - 1}"
+    else:
+        ws_rpt.auto_filter.ref = f"A2:F{row_idx - 1}"
 
     buf = BytesIO()
     out.save(buf)
