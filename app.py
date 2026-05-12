@@ -330,7 +330,7 @@ def extract_comments(file_bytes, uid_col_name):
             else:
                 ctype = "missing"
         else:
-            ctype = "confirmation"
+            ctype = "other"
 
         sku_comments[uid].append((attr, text, ctype))
 
@@ -351,9 +351,11 @@ def build_report(sku_comments, uid_col_name, file_name):
     orange_hdr   = PatternFill("solid", fgColor="C65911")
     action_hdr   = PatternFill("solid", fgColor="7D6608")
     missing_hdr  = PatternFill("solid", fgColor="C00000")
+    other_hdr    = PatternFill("solid", fgColor="595959")
     orange_cell  = PatternFill("solid", fgColor="FDE9D9")
     action_cell  = PatternFill("solid", fgColor="FFFFE0")
     missing_cell = PatternFill("solid", fgColor="FFE0E0")
+    other_cell   = PatternFill("solid", fgColor="EDEDED")
 
     thin  = Side(style="thin", color="B8CCE4")
     bdr   = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -381,6 +383,7 @@ def build_report(sku_comments, uid_col_name, file_name):
     conf_count    = sum(1 for v in sku_comments.values() for _,_,t in v if t == "confirmation")
     action_count  = sum(1 for v in sku_comments.values() for _,_,t in v if t == "action")
     missing_count = sum(1 for v in sku_comments.values() for _,_,t in v if t == "missing")
+    other_count   = sum(1 for v in sku_comments.values() for _,_,t in v if t == "other")
     source_name = file_name.replace(".xlsx", "").replace("_", " ")
 
     # ── Sheet 1: Summary ──────────────────────────────────────────────────────
@@ -406,6 +409,7 @@ def build_report(sku_comments, uid_col_name, file_name):
         f"    |    Confirmation: {conf_count}"
         f"    |    Action Required: {action_count}"
         f"    |    Data Missing: {missing_count}"
+        f"    |    Other: {other_count}"
     )
     c.font = Font(name="Arial", size=10, color="FFFFFF")
     c.fill = blue
@@ -430,8 +434,9 @@ def build_report(sku_comments, uid_col_name, file_name):
     ws_rpt.column_dimensions["C"].width = 40
     ws_rpt.column_dimensions["D"].width = 40
     ws_rpt.column_dimensions["E"].width = 40
+    ws_rpt.column_dimensions["F"].width = 40
 
-    ws_rpt.merge_cells("A1:E1")
+    ws_rpt.merge_cells("A1:F1")
     c = ws_rpt["A1"]
     c.value = "All Comments — Attribute Level Detail"
     c.font = Font(name="Arial", bold=True, size=13, color="FFFFFF")
@@ -443,13 +448,14 @@ def build_report(sku_comments, uid_col_name, file_name):
     hdr_cell(ws_rpt, 2, 3, "Confirmation Comment", fill=orange_hdr)
     hdr_cell(ws_rpt, 2, 4, "Action Required",       fill=action_hdr)
     hdr_cell(ws_rpt, 2, 5, "Data Missing",           fill=missing_hdr)
+    hdr_cell(ws_rpt, 2, 6, "Other Comments",         fill=other_hdr)
 
     row_idx = 3
     for i, (sku, comments) in enumerate(sku_comments.items()):
         hdr_fill = PatternFill("solid", fgColor=sku_hdr_colors[i % 2])
         row_fill = PatternFill("solid", fgColor=sku_row_colors[i % 2])
 
-        for col in range(1, 6):
+        for col in range(1, 7):
             c = ws_rpt.cell(row=row_idx, column=col)
             c.fill = hdr_fill
             c.font = Font(name="Arial", bold=True, color="000000", size=10)
@@ -459,7 +465,7 @@ def build_report(sku_comments, uid_col_name, file_name):
         ws_rpt.cell(row=row_idx, column=2).value = f"▼  {len(comments)} comment(s)"
         row_idx += 1
 
-        attr_map = defaultdict(lambda: {"confirmation": "", "action": "", "missing": ""})
+        attr_map = defaultdict(lambda: {"confirmation": "", "action": "", "missing": "", "other": ""})
         for attr, comment, ctype in comments:
             attr_map[attr][ctype] = comment
 
@@ -479,10 +485,14 @@ def build_report(sku_comments, uid_col_name, file_name):
             c = ws_rpt.cell(row=row_idx, column=5, value=vals["missing"] or "-")
             c.font = Font(name="Arial", size=10); c.fill = mf; c.alignment = nowrap; c.border = bdr
 
+            of = other_cell if vals["other"] else row_fill
+            c = ws_rpt.cell(row=row_idx, column=6, value=vals["other"] or "-")
+            c.font = Font(name="Arial", size=10); c.fill = of; c.alignment = nowrap; c.border = bdr
+
             row_idx += 1
 
     ws_rpt.freeze_panes = "A3"
-    ws_rpt.auto_filter.ref = f"A2:E{row_idx - 1}"
+    ws_rpt.auto_filter.ref = f"A2:F{row_idx - 1}"
 
     buf = BytesIO()
     out.save(buf)
@@ -508,10 +518,12 @@ st.markdown("""
     <span class="pill-orange">🟠 Orange highlight → Confirmation Comment</span>
     <span class="pill-yellow">🟡 Yellow + has data → Action Required</span>
     <span style="display:inline-block;background:#FFE0E0;border:1.5px solid #C00000;color:#C00000;border-radius:20px;padding:3px 14px;font-size:0.82rem;font-weight:600;margin-right:8px;">🔴 Yellow + empty cell → Data Missing</span>
+    <span style="display:inline-block;background:#EDEDED;border:1.5px solid #595959;color:#595959;border-radius:20px;padding:3px 14px;font-size:0.82rem;font-weight:600;">⚪ Other colour → Other Comments</span>
     <div class="info-box" style="margin-top:14px;">
         <b>Orange</b> → Confirmation needed (sign-off required from brand/EPM)<br>
         <b>Yellow + data present</b> → Action Required (e.g. value incorrect, exceeds limit)<br>
-        <b>Yellow + cell empty</b> → Data Missing (mandatory field not filled)
+        <b>Yellow + cell empty</b> → Data Missing (mandatory field not filled)<br>
+        <b>Any other colour</b> → Other Comments (captured separately for review)
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -570,6 +582,7 @@ if uploaded_file:
             conf_count     = sum(1 for v in sku_comments.values() for _, _, t in v if t == "confirmation")
             action_count   = sum(1 for v in sku_comments.values() for _, _, t in v if t == "action")
             missing_count  = sum(1 for v in sku_comments.values() for _, _, t in v if t == "missing")
+            other_count    = sum(1 for v in sku_comments.values() for _, _, t in v if t == "other")
 
             st.markdown(f'<div class="success-box">✅ Found <b>{total_comments}</b> comments across <b>{total_skus}</b> {uid_col}(s). Report is ready!</div>', unsafe_allow_html=True)
 
@@ -596,6 +609,10 @@ if uploaded_file:
                     <div class="stat-number" style="color:#C00000;">{missing_count}</div>
                     <div class="stat-label" style="color:#C00000;">Data Missing</div>
                 </div>
+                <div class="stat-box" style="background:#EDEDED; border-color:#595959;">
+                    <div class="stat-number" style="color:#595959;">{other_count}</div>
+                    <div class="stat-label" style="color:#595959;">Other</div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -603,7 +620,7 @@ if uploaded_file:
             st.markdown("**Preview — first 10 rows of Comment Report:**")
             preview_rows = []
             for sku, comments in list(sku_comments.items())[:5]:
-                attr_map = defaultdict(lambda: {"confirmation": "", "action": "", "missing": ""})
+                attr_map = defaultdict(lambda: {"confirmation": "", "action": "", "missing": "", "other": ""})
                 for attr, comment, ctype in comments:
                     attr_map[attr][ctype] = comment
                 for attr, vals in list(attr_map.items())[:3]:
@@ -613,6 +630,7 @@ if uploaded_file:
                         "Confirmation Comment": vals["confirmation"] or "-",
                         "Action Required":      vals["action"] or "-",
                         "Data Missing":         vals["missing"] or "-",
+                        "Other Comments":       vals["other"] or "-",
                     })
 
             df_preview = pd.DataFrame(preview_rows[:10])
